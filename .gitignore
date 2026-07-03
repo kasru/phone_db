@@ -1,0 +1,7 @@
+test_data/
+*.o
+phone_db_test
+phone_db_units
+*.gcno
+*.gcda
+*.gcov
