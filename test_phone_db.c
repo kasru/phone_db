@@ -190,7 +190,7 @@ TEST(test_phone_key_is_empty) {
  * После phone_db_init внутренние буферы выделены, count равен 0.
  */
 TEST(test_db_init) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     int rc = phone_db_init(&db, 0, 0, 0);
     ASSERT_EQ(rc, 0);
     ASSERT(db.records != NULL);
@@ -205,7 +205,7 @@ TEST(test_db_init) {
  * После phone_db_destroy указатель records должен быть NULL.
  */
 TEST(test_db_destroy) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_destroy(&db);
     /* После уничтожения внутренние указатели должны быть NULL */
@@ -233,7 +233,7 @@ TEST(test_bulk_load_simple) {
         "67890;comment2;\n"
         "ABCDE;;2025-12-31\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     int rc = phone_db_load_csv(&db, "test_data/simple.csv");
     ASSERT_EQ(rc, 0);
@@ -252,7 +252,7 @@ TEST(test_bulk_load_lookup) {
         "AAAA;hello;2025-06-01\n"
         "BBBB;world;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/lookup.csv");
 
@@ -287,7 +287,7 @@ TEST(test_bulk_load_lookup_not_found) {
     write_csv_file("test_data/notfound.csv",
         "1111;aaa;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/notfound.csv");
 
@@ -314,7 +314,7 @@ TEST(test_bulk_load_sorted_order) {
         "AAA;first;\n"
         "BBB;second;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/sorted.csv");
     ASSERT_EQ(db.count, 3);
@@ -334,7 +334,7 @@ TEST(test_bulk_load_sorted_order) {
 TEST(test_bulk_load_empty_file) {
     write_csv_file("test_data/empty.csv", "");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     int rc = phone_db_load_csv(&db, "test_data/empty.csv");
     ASSERT_EQ(rc, 0);
@@ -351,7 +351,7 @@ TEST(test_bulk_load_missing_comment) {
     write_csv_file("test_data/nocomment.csv",
         "123;;2025-01-01\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/nocomment.csv");
     ASSERT_EQ(db.count, 1);
@@ -377,7 +377,7 @@ TEST(test_bulk_load_missing_expiry) {
     write_csv_file("test_data/noexpiry.csv",
         "123;hello;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/noexpiry.csv");
 
@@ -404,7 +404,7 @@ TEST(test_bulk_load_missing_expiry) {
 TEST(test_increment_add) {
     write_csv_file("test_data/inc_add.csv", "AAAA;base;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/inc_add.csv");
     ASSERT_EQ(db.count, 1);
@@ -435,7 +435,7 @@ TEST(test_increment_add) {
 TEST(test_increment_update) {
     write_csv_file("test_data/inc_upd.csv", "AAAA;old;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/inc_upd.csv");
 
@@ -467,7 +467,7 @@ TEST(test_increment_delete) {
         "AAAA;keep;\n"
         "BBBB;remove;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/inc_del.csv");
 
@@ -505,7 +505,7 @@ TEST(test_increment_multiple_ops) {
         "2222;bbb;\n"
         "3333;ccc;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/inc_multi.csv");
 
@@ -561,7 +561,7 @@ TEST(test_save_sorted_basic) {
         "AAA;first;\n"
         "BBB;second;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/save.csv");
 
@@ -600,7 +600,7 @@ TEST(test_save_sorted_with_increments) {
         "CCC;third;\n"
         "AAA;first;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/save_inc.csv");
 
@@ -638,7 +638,7 @@ TEST(test_save_sorted_with_delete) {
         "BBB;remove;\n"
         "CCC;keep;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/save_del.csv");
 
@@ -672,7 +672,7 @@ TEST(test_save_sorted_with_delete) {
  * После инициализации БД объём памяти должен быть больше 0.
  */
 TEST(test_memory_usage_reasonable) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     size_t baseline = phone_db_memory_usage(&db);
@@ -691,7 +691,7 @@ TEST(test_memory_usage_after_load) {
         "1111;hello;\n"
         "2222;world;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/mem.csv");
 
@@ -726,7 +726,7 @@ TEST(test_bulk_load_performance) {
     printf("готово.\n    Загрузка... ");
     fflush(stdout);
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     struct timespec t0, t1;
@@ -765,7 +765,7 @@ TEST(test_bulk_load_performance) {
 TEST(test_increment_performance) {
     write_csv_file("test_data/inc_perf.csv", "00000000;base;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/inc_perf.csv");
 
@@ -801,7 +801,7 @@ TEST(test_bulk_load_duplicate_keys) {
         "AAAA;first;\n"
         "AAAA;second;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     int rc = phone_db_load_csv(&db, "test_data/dup.csv");
     /* Должны корректно обработать — либо оставить последнюю, либо вернуть ошибку */
@@ -820,7 +820,7 @@ TEST(test_bulk_load_whitespace) {
     write_csv_file("test_data/whitespace.csv",
         " AAA ; hello ; 2025-01-01 \n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     int rc = phone_db_load_csv(&db, "test_data/whitespace.csv");
     ASSERT_EQ(rc, 0);
@@ -836,7 +836,7 @@ TEST(test_bulk_load_whitespace) {
  * OP_ADD в пустой БД должен работать корректно.
  */
 TEST(test_apply_increment_to_empty_db) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     /* Добавление в пустую БД должно работать */
@@ -862,7 +862,7 @@ TEST(test_apply_increment_to_empty_db) {
 TEST(test_delete_nonexistent) {
     write_csv_file("test_data/del_ne.csv", "AAAA;keep;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/del_ne.csv");
 
@@ -894,7 +894,7 @@ TEST(test_sorted_record_size) {
  * что realloc корректно расширяет буфер без потери данных.
  */
 TEST(test_pending_comment_buf_overflow) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     /* pending_comment_buf начинается с 64 КБ. Каждый комментарий ~300 байт. */
@@ -935,7 +935,7 @@ TEST(test_load_csv_comment_buf_overflow) {
     }
     fclose(f);
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     int rc = phone_db_load_csv(&db, "test_data/big_comments.csv");
     /* Должно завершиться успешно — realloc расширяет буфер */
@@ -968,7 +968,7 @@ TEST(test_save_sorted_with_dedup) {
         "AAAA;first;\n"
         "BBBB;second;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/save_dedup.csv");
 
@@ -1011,7 +1011,7 @@ TEST(test_save_sorted_update_existing) {
         "AAAA;old_comment;2025-06-01\n"
         "BBBB;keep;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/save_upd.csv");
 
@@ -1049,7 +1049,7 @@ TEST(test_save_sorted_update_empty_comment) {
     write_csv_file("test_data/save_upd_ec.csv",
         "AAAA;has_comment;2025-06-01\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/save_upd_ec.csv");
 
@@ -1085,7 +1085,7 @@ TEST(test_save_sorted_add_new_empty_comment) {
     write_csv_file("test_data/save_add_ec.csv",
         "AAAA;existing;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/save_add_ec.csv");
 
@@ -1123,7 +1123,7 @@ TEST(test_save_sorted_add_existing_key) {
     write_csv_file("test_data/save_add_ex.csv",
         "AAAA;original;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/save_add_ex.csv");
 

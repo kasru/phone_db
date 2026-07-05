@@ -41,6 +41,16 @@
 /** @brief Ёмкость массива отложенных операций по умолчанию. */
 #define DEFAULT_PENDING_CAPACITY    256
 
+/** @brief Макрос для безопасной нулевой инициализации phone_db_t.
+ *
+ * Использование:
+ * @code
+ * phone_db_t db = PHONE_DB_INITIALIZER;
+ * phone_db_init(&db, 0, 0, 0);
+ * @endcode
+ */
+#define PHONE_DB_INITIALIZER {0}
+
 
 
 /**
@@ -187,11 +197,15 @@ int format_expiry(uint32_t days, char *buf, size_t bufsize);
  * хранятся в одном буфере comment_buf.
  * Обязательно вызвать phone_db_destroy() при завершении.
  *
+ * Контракт: структура db должна быть нулевой перед первым вызовом
+ * (phone_db_t db = {0} или PHONE_DB_INITIALIZER).
+ * Повторный вызов безопасен: предыдущие буферы освобождаются.
+ *
  * @param[out] db                 База данных для инициализации.
  * @param[in]  capacity           Начальная ёмкость массива записей. Если 0, то DEFAULT_CAPACITY.
  * @param[in]  comment_buf_cap    Начальная ёмкость буфера комментариев. Если 0, то DEFAULT_COMMENT_BUF_CAP.
  * @param[in]  pending_capacity   Начальная ёмкость массива pending. Если 0, то DEFAULT_PENDING_CAPACITY.
- * @return 0 при успехе, -1 при ошибке выделения памяти.
+ * @return 0 при успехе, -1 при ошибке выделения памяти или невалидном состоянии.
  */
 int phone_db_init(phone_db_t *db, size_t capacity, size_t comment_buf_cap,
                   size_t pending_capacity);

@@ -52,42 +52,77 @@ int phone_key_is_empty(const phone_key_t *key) {
 
 int phone_db_init(phone_db_t *db, size_t capacity, size_t comment_buf_cap,
                   size_t pending_capacity) {
-    /* Защита от утечки памяти при повторном вызове */
-    phone_db_destroy(db);
+    if (!db) return -1;
+
+    if (db->magic == PHONE_DB_MAGIC) {
+        phone_db_destroy(db);
+    } else if (db->magic != 0) {
+        return -1;
+    }
+
+    size_t new_capacity = capacity ? capacity : DEFAULT_CAPACITY;
+    size_t new_comment_buf_cap = comment_buf_cap ? comment_buf_cap : DEFAULT_COMMENT_BUF_CAP;
+    size_t new_pending_capacity = pending_capacity ? pending_capacity : DEFAULT_PENDING_CAPACITY;
+
+    phone_record_t *new_records = calloc(new_capacity, sizeof(phone_record_t));
+    if (!new_records) {
+        memset(db, 0, sizeof(*db));
+        return -1;
+    }
+
+    char *new_comment_buf = malloc(new_comment_buf_cap);
+    if (!new_comment_buf) {
+        free(new_records);
+        memset(db, 0, sizeof(*db));
+        return -1;
+    }
+
+    pending_entry_t *new_pending = calloc(new_pending_capacity, sizeof(pending_entry_t));
+    if (!new_pending) {
+        free(new_records);
+        free(new_comment_buf);
+        memset(db, 0, sizeof(*db));
+        return -1;
+    }
+
     memset(db, 0, sizeof(*db));
 
-    db->capacity = capacity ? capacity : DEFAULT_CAPACITY;
-    db->records = calloc(db->capacity, sizeof(phone_record_t));
-    if (!db->records) return -1;
+    db->records = new_records;
+    db->capacity = new_capacity;
 
-    db->comment_buf_cap = comment_buf_cap ? comment_buf_cap : DEFAULT_COMMENT_BUF_CAP;
-    db->comment_buf = malloc(db->comment_buf_cap);
-    if (!db->comment_buf) {
-        free(db->records);
-        db->records = NULL;
-        return -1;
-    }
+    db->comment_buf = new_comment_buf;
+    db->comment_buf_cap = new_comment_buf_cap;
 
-    db->pending_capacity = pending_capacity ? pending_capacity : DEFAULT_PENDING_CAPACITY;
-    db->pending = calloc(db->pending_capacity, sizeof(pending_entry_t));
-    if (!db->pending) {
-        free(db->records);
-        db->records = NULL;
-        free(db->comment_buf);
-        db->comment_buf = NULL;
-        return -1;
-    }
+    db->pending = new_pending;
+    db->pending_capacity = new_pending_capacity;
 
     db->magic = PHONE_DB_MAGIC;
     return 0;
 }
 
-void phone_db_destroy(phone_db_t *db) {
-    if (!db || db->magic != PHONE_DB_MAGIC) return;
+/**
+ * @brief Освободить все ресурсы базы данных и обнулить структуру.
+ *
+ * Освобождает массивы records, comment_buf и pending,
+ * затем обнуляет всю структуру через memset.
+ * Не проверяет magic — вызывающая сторона несёт ответственность
+ * за корректность вызова.
+ *
+ * @param[in,out] db  База данных для освобождения.
+ */
+static void phone_db_free_storage(phone_db_t *db) {
+    if (!db) return;
     free(db->records);
     free(db->comment_buf);
     free(db->pending);
     memset(db, 0, sizeof(*db));
+}
+
+void phone_db_destroy(phone_db_t *db) {
+    if (!db) return;
+    if (db->magic == 0) return;
+    if (db->magic != PHONE_DB_MAGIC) return;
+    phone_db_free_storage(db);
 }
 
 int phone_db_reset(phone_db_t *db) {
@@ -229,6 +264,16 @@ static int add_comment(phone_db_t *db, const char *comment, size_t len,
     return 0;
 }
 
+/**
+ * @brief Компаратор для сортировки массива записей по ключу телефона.
+ *
+ * Обёртка над phone_key_compare для совместимости с qsort().
+ * Приводит void-указатели к phone_record_t и сравнивает ключи.
+ *
+ * @param[in] a  Указатель на первую запись (phone_record_t*).
+ * @param[in] b  Указатель на вторую запись (phone_record_t*).
+ * @return Отрицательное, нулевое или положительное значение.
+ */
 static int record_cmp(const void *a, const void *b) {
     return phone_key_compare(&((const phone_record_t*)a)->key,
                              &((const phone_record_t*)b)->key);

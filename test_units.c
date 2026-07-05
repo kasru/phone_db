@@ -61,7 +61,7 @@ TEST(test_run_macro_no_double_count) {
 TEST(test_save_sorted_no_comment_buf_mutation) {
     write_csv("test_data/save_mut.csv", "AAAA;hello;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/save_mut.csv");
 
@@ -98,7 +98,7 @@ TEST(test_save_sorted_no_comment_buf_mutation) {
 TEST(test_parse_expiry_correct) {
     write_csv("test_data/expiry_correct.csv", "AAAA;hello;2025-01-01\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/expiry_correct.csv");
 
@@ -127,7 +127,7 @@ TEST(test_parse_expiry_correct) {
  * к перезаписи первой операции второй. pending_count остаётся 1.
  */
 TEST(test_pending_ops_dedup) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     phone_db_apply_increment(&db, OP_ADD, "AAAA", "first", "");
@@ -185,7 +185,7 @@ TEST(test_invalid_hex_returns_error) {
  * Короткий комментарий "ok" должен быть принят.
  */
 TEST(test_comment_too_long_rejected) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     size_t big_len = 70000;
@@ -226,7 +226,7 @@ TEST(test_long_line_not_truncated) {
     fclose(f);
     free(payload);
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     int rc = phone_db_load_csv(&db, "test_data/longline_fixed.csv");
     ASSERT_EQ(rc, 0);
@@ -256,7 +256,7 @@ TEST(test_long_line_not_truncated) {
  * Корректная операция OP_ADD должна завершаться успешно.
  */
 TEST(test_invalid_op_rejected) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     ASSERT(phone_db_apply_increment(&db, 'Z', "AAAA", "test", "") == -1);
@@ -283,7 +283,7 @@ TEST(test_load_csv_replaces_data) {
     write_csv("test_data/replace1.csv", "AAAA;first;\n");
     write_csv("test_data/replace2.csv", "BBBB;second;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     phone_db_load_csv(&db, "test_data/replace1.csv");
@@ -323,7 +323,7 @@ TEST(test_load_csv_replaces_data) {
 TEST(test_add_then_update_preserved_in_save) {
     write_csv("test_data/add_upd.csv", "BBBB;base;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/add_upd.csv");
 
@@ -370,16 +370,26 @@ TEST(test_add_then_update_preserved_in_save) {
  *
  * После первого вызова внутренние указатели обнуляются,
  * повторный вызов не должен привести к крашу.
+ * Также проверяет, что magic обнуляется после уничтожения.
  */
 TEST(test_double_destroy_safe) {
-    phone_db_t db;
-    phone_db_init(&db, 0, 0, 0);
+    phone_db_t db = PHONE_DB_INITIALIZER;
+
+    ASSERT_EQ(phone_db_init(&db, 0, 0, 0), 0);
 
     phone_db_destroy(&db);
+
     ASSERT(db.records == NULL);
+    ASSERT(db.comment_buf == NULL);
+    ASSERT(db.pending == NULL);
+    ASSERT_EQ(db.magic, 0);
 
     phone_db_destroy(&db);
+
     ASSERT(db.records == NULL);
+    ASSERT(db.comment_buf == NULL);
+    ASSERT(db.pending == NULL);
+    ASSERT_EQ(db.magic, 0);
 }
 
 /* ======================================================================
@@ -393,7 +403,7 @@ TEST(test_double_destroy_safe) {
  * старые буферы освобождаются перед выделением новых.
  */
 TEST(test_double_init_no_leak) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     size_t first = phone_db_memory_usage(&db);
@@ -418,7 +428,7 @@ TEST(test_double_init_no_leak) {
  * Вызов destroy на стековой переменной без init не должен привести к крашу.
  */
 TEST(test_destroy_without_init) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     memset(&db, 0xCC, sizeof(db));
 
     phone_db_destroy(&db);
@@ -441,7 +451,7 @@ TEST(test_csv_duplicate_keys_dedup) {
         "AAAA;first_comment;2025-01-01\n"
         "AAAA;second_comment;2026-06-01\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     int rc = phone_db_load_csv(&db, "test_data/unit14_dup.csv");
     ASSERT_EQ(rc, 0);
@@ -497,7 +507,7 @@ TEST(test_hex_rejects_long_input) {
 TEST(test_parse_expiry_no_overflow) {
     write_csv("test_data/unit16_far.csv", "AAAA;far_future;10000000-01-01\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     int rc = phone_db_load_csv(&db, "test_data/unit16_far.csv");
     ASSERT_EQ(rc, 0);
@@ -526,7 +536,7 @@ TEST(test_parse_expiry_no_overflow) {
  * дизайна для простоты реализации. Тест гарантирует корректность поиска.
  */
 TEST(test_find_pending_linear_correct) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     /* Добавляем 1000 отложенных операций */
@@ -573,7 +583,7 @@ TEST(test_save_sorted_accurate_count_with_delete) {
     }
     fclose(f);
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/unit18_del.csv");
     ASSERT_EQ(db.count, 1000);
@@ -618,7 +628,7 @@ TEST(test_load_csv_rollback_on_error) {
         "AAAA;hello;\n"
         "BBBB;world;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     /* Загружаем валидные данные */
@@ -661,7 +671,7 @@ TEST(test_load_csv_rollback_on_error) {
  * OP_UPDATE и OP_DELETE должны вернуть -1. OP_ADD должен работать.
  */
 TEST(test_update_delete_nonexistent_returns_error) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
 
     /* Загружаем одну запись */
@@ -710,7 +720,7 @@ TEST(test_invalid_date_returns_sentinel) {
         "CCCC;bad_format;not-a-date\n"
         "DDDD;bad_values;9999-99-99\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/unit21_dates.csv");
 
@@ -759,7 +769,7 @@ TEST(test_save_sorted_strips_leading_zeros) {
         "000000FF;two;\n"
         "00012345;three;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/unit22_zeros.csv");
 
@@ -785,7 +795,7 @@ TEST(test_save_sorted_strips_leading_zeros) {
     fclose(f);
 
     /* Проверяем обратную загрузку: данные восстанавливаются корректно */
-    phone_db_t db2;
+    phone_db_t db2 = PHONE_DB_INITIALIZER;
     phone_db_init(&db2, 0, 0, 0);
     rc = phone_db_load_csv(&db2, "test_data/unit22_out.csv");
     ASSERT_EQ(rc, 0);
@@ -813,7 +823,7 @@ TEST(test_save_sorted_strips_leading_zeros) {
  * pending-массив до capacity и добавляя ещё одну запись.
  */
 TEST(test_ensure_capacity_overflow_guard) {
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 4);
 
     /* Заполняем pending до capacity */
@@ -879,7 +889,7 @@ TEST(test_format_expiry_basic) {
 TEST(test_format_expiry_roundtrip) {
     write_csv("test_data/unit25_rt.csv", "AAAA;hello;2025-01-01\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/unit25_rt.csv");
 
@@ -889,7 +899,7 @@ TEST(test_format_expiry_roundtrip) {
     phone_db_destroy(&db);
 
     /* Перечитываем */
-    phone_db_t db2;
+    phone_db_t db2 = PHONE_DB_INITIALIZER;
     phone_db_init(&db2, 0, 0, 0);
     rc = phone_db_load_csv(&db2, "test_data/unit25_out.csv");
     ASSERT_EQ(rc, 0);
@@ -948,7 +958,7 @@ TEST(test_format_expiry_roundtrip) {
 TEST(test_format_expiry_no_expiry_saves_empty) {
     write_csv("test_data/unit26_noexp.csv", "AAAA;hello;\n");
 
-    phone_db_t db;
+    phone_db_t db = PHONE_DB_INITIALIZER;
     phone_db_init(&db, 0, 0, 0);
     phone_db_load_csv(&db, "test_data/unit26_noexp.csv");
 
@@ -967,7 +977,7 @@ TEST(test_format_expiry_no_expiry_saves_empty) {
     ASSERT_STREQ(line, "AAAA;hello;\n");
 
     /* Перечитываем через БД — expiry должен быть 0 */
-    phone_db_t db2;
+    phone_db_t db2 = PHONE_DB_INITIALIZER;
     phone_db_init(&db2, 0, 0, 0);
     phone_db_load_csv(&db2, "test_data/unit26_out.csv");
 
@@ -1029,6 +1039,84 @@ TEST(test_parse_expiry_direct) {
     /* Большая дата — не переполняется */
     ASSERT_EQ(parse_expiry("9999-12-31", &d), 0);
     ASSERT(d > 0);
+}
+
+/* ====================================================================== */
+
+/* ======================================================================
+ * UNIT #28 Повторный init корректно освобождает старые буферы
+ * ====================================================================== */
+
+/**
+ * @brief Проверяет, что повторный phone_db_init освобождает старые буферы.
+ *
+ * Повторный init должен освободить старые буферы
+ * и создать новые без утечки памяти.
+ */
+TEST(test_double_init_no_leak_and_safe_state) {
+    phone_db_t db = PHONE_DB_INITIALIZER;
+
+    ASSERT_EQ(phone_db_init(&db, 0, 0, 0), 0);
+
+    ASSERT(db.records != NULL);
+    ASSERT(db.comment_buf != NULL);
+    ASSERT(db.pending != NULL);
+
+    ASSERT_EQ(phone_db_init(&db, 0, 0, 0), 0);
+
+    ASSERT(db.records != NULL);
+    ASSERT(db.comment_buf != NULL);
+    ASSERT(db.pending != NULL);
+    ASSERT_EQ(db.magic, PHONE_DB_MAGIC);
+    ASSERT_EQ(db.count, 0);
+    ASSERT_EQ(db.pending_count, 0);
+
+    phone_db_destroy(&db);
+}
+
+/* ======================================================================
+ * UNIT #29 Destroy нулевой инициализированной структуры безопасен
+ * ====================================================================== */
+
+/**
+ * @brief Проверяет, что destroy до init безопасен.
+ *
+ * phone_db_destroy на нулевой структуре не должен падать.
+ */
+TEST(test_destroy_zero_initialized_safe) {
+    phone_db_t db = PHONE_DB_INITIALIZER;
+
+    phone_db_destroy(&db);
+
+    ASSERT(db.records == NULL);
+    ASSERT(db.comment_buf == NULL);
+    ASSERT(db.pending == NULL);
+    ASSERT_EQ(db.magic, 0);
+}
+
+/* ======================================================================
+ * UNIT #30 Init после destroy безопасен
+ * ====================================================================== */
+
+/**
+ * @brief Проверяет, что init после destroy работает корректно.
+ *
+ * Цикл init -> destroy -> init должен работать без проблем.
+ */
+TEST(test_init_after_destroy_safe) {
+    phone_db_t db = PHONE_DB_INITIALIZER;
+
+    ASSERT_EQ(phone_db_init(&db, 0, 0, 0), 0);
+    phone_db_destroy(&db);
+
+    ASSERT_EQ(phone_db_init(&db, 0, 0, 0), 0);
+
+    ASSERT(db.records != NULL);
+    ASSERT(db.comment_buf != NULL);
+    ASSERT(db.pending != NULL);
+    ASSERT_EQ(db.magic, PHONE_DB_MAGIC);
+
+    phone_db_destroy(&db);
 }
 
 /* ====================================================================== */
@@ -1145,6 +1233,18 @@ int main(void) {
 
     printf("[UNIT #27: Прямые тесты parse_expiry]\n");
     RUN(test_parse_expiry_direct);
+    printf("\n");
+
+    printf("[UNIT #28: Повторный init корректно освобождает старые буферы]\n");
+    RUN(test_double_init_no_leak_and_safe_state);
+    printf("\n");
+
+    printf("[UNIT #29: Destroy нулевой инициализированной структуры безопасен]\n");
+    RUN(test_destroy_zero_initialized_safe);
+    printf("\n");
+
+    printf("[UNIT #30: Init после destroy безопасен]\n");
+    RUN(test_init_after_destroy_safe);
     printf("\n");
 
     printf("=== Результаты: %d/%d пройдено, %d ПРОВАЛЕНО ===\n",
