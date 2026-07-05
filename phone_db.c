@@ -138,23 +138,14 @@ static int ensure_pending_capacity(phone_db_t *db) {
     return 0;
 }
 
-/**
- * @brief Разбирает строку даты формата YYYY-MM-DD.
- *
- * Преобразует строку в количество дней с эпохи (1970-01-01).
- * Возвращает 0 для пустых или некорректных строк.
- *
- * @param s строка с датой в формате YYYY-MM-DD.
- * @return количество дней с эпохи, или 0 при ошибке.
- */
-static uint32_t parse_expiry(const char *s) {
+int parse_expiry(const char *s, uint32_t *days) {
     /* Проверка входных данных: NULL или пустая строка -> 0 ("без срока") */
-    if (!s || *s == '\0') return 0;
+    if (!s || *s == '\0') { *days = 0; return 0; }
     int64_t y, m, d;
-    /* Парсинг строки YYYY-MM-DD. Если формат неверен -> UINT32_MAX (ошибка) */
-    if (sscanf(s, "%" SCNd64 "-%" SCNd64 "-%" SCNd64, &y, &m, &d) != 3) return UINT32_MAX;
+    /* Парсинг строки YYYY-MM-DD. Если формат неверен -> -1 (ошибка) */
+    if (sscanf(s, "%" SCNd64 "-%" SCNd64 "-%" SCNd64, &y, &m, &d) != 3) return -1;
     /* Проверка допустимости значений месяца и дня */
-    if (m < 1 || m > 12 || d < 1 || d > 31) return UINT32_MAX;
+    if (m < 1 || m > 12 || d < 1 || d > 31) return -1;
 
     /* Преобразование YYYY-MM-DD в дни с эпохи (1970-01-01).
      * Алгоритм: https://howardhinnant.github.io/date_algorithms.html */
@@ -168,9 +159,40 @@ static uint32_t parse_expiry(const char *s) {
     int64_t yoe = y - era * 400;                /* Год внутри эпохи (0..399) */
     int64_t doy = (153 * (m - 3) + 2) / 5 + d - 1;  /* День года (0..364) */
     int64_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;  /* День внутри эпохи */
-    int64_t days = era * 146097 + doe - 719468;
-    if (days < 0 || days > (int64_t)UINT32_MAX) return UINT32_MAX;
-    return (uint32_t)days;
+    int64_t rdays = era * 146097 + doe - 719468;
+    if (rdays < 0 || rdays > (int64_t)UINT32_MAX) return -1;
+    *days = (uint32_t)rdays;
+    return 0;
+}
+
+int format_expiry(uint32_t days, char *buf, size_t bufsize) {
+    if (!buf || bufsize < 11) return -1;
+    if (days == 0 || days == UINT32_MAX) {
+        buf[0] = '\0';
+        return 0;
+    }
+    /* Алгоритм Howard Hinnant: обратное преобразование дня в дату.
+     * https://howardhinnant.github.io/date_algorithms.html */
+    int64_t z = (int64_t)days + 719468;
+    int64_t era = (z >= 0 ? z : z - 146096) / 146097;
+    int64_t doe = z - era * 146097;
+    int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    int64_t y = yoe + era * 400;
+    int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    int64_t mp = (5 * doy + 2) / 153;
+    int64_t d = doy - (153 * mp + 2) / 5 + 1;
+    int64_t m = mp + (mp < 10 ? 3 : -9);
+    y += (m <= 2) ? 1 : 0;
+    if (m < 1 || m > 12) {
+        buf[0] = '\0';
+        return 0;
+    }
+    if (y < 0 || y > 9999) {
+        buf[0] = '\0';
+        return 0;
+    }
+    int n = snprintf(buf, bufsize, "%04" PRId64 "-%02" PRId64 "-%02" PRId64, y, m, d);
+    return n;
 }
 
 /**
@@ -334,7 +356,7 @@ int phone_db_load_csv(phone_db_t *db, const char *filename) {
         rec->key = key;
         rec->comment_offset = co;
         rec->comment_len = cl;
-        rec->expiry = parse_expiry(expiry_str);
+        parse_expiry(expiry_str, &rec->expiry);
     }
     free(line);
     fclose(f);
@@ -392,7 +414,7 @@ int phone_db_apply_increment(phone_db_t *db, char op, const char *number,
         pending_entry_t *e = &db->pending[existing];
         e->record.comment_offset = co;
         e->record.comment_len = cl;
-        e->record.expiry = parse_expiry(expiry);
+        parse_expiry(expiry, &e->record.expiry);
         if (!(e->op == OP_ADD && op == OP_UPDATE)) {
             e->op = (uint8_t)op;
         }
@@ -403,7 +425,7 @@ int phone_db_apply_increment(phone_db_t *db, char op, const char *number,
     e->record.key = key;
     e->record.comment_offset = co;
     e->record.comment_len = cl;
-    e->record.expiry = parse_expiry(expiry);
+    parse_expiry(expiry, &e->record.expiry);
     e->op = (uint8_t)op;
     return 0;
 }
@@ -540,10 +562,12 @@ int phone_db_save_sorted(const phone_db_t *db, const char *filename) {
         while (*p == '0' && *(p+1)) p++;
 
         /* Все комментарии в одном буфере comment_buf */
-        fprintf(f, "%s;%.*s;%u\n", p,
+        char expiry_buf[11];
+        format_expiry(tmp_save_entries[i].rec->expiry, expiry_buf, sizeof(expiry_buf));
+        fprintf(f, "%s;%.*s;%s\n", p,
                 tmp_save_entries[i].rec->comment_len,
                 db->comment_buf + tmp_save_entries[i].rec->comment_offset,
-                tmp_save_entries[i].rec->expiry);
+                expiry_buf);
     }
 
     free(tmp_save_entries);

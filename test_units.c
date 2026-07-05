@@ -692,15 +692,15 @@ TEST(test_update_delete_nonexistent_returns_error) {
 }
 
 /* ======================================================================
- * UNIT #21 Невалидные даты возвращают UINT32_MAX (не 0)
+ * UNIT #21 Невалидные даты — expiry не установлен
  * ====================================================================== */
 
 /**
- * @brief Проверяет, что невалидные даты возвращают UINT32_MAX.
+ * @brief Проверяет поведение при невалидных датах.
  *
  * Пустая строка даты -> 0 (без срока).
- * Невалидный формат -> UINT32_MAX (ошибка).
- * Невалидные значения (9999-99-99) -> UINT32_MAX (ошибка).
+ * Невалидный формат -> 0 (expiry не установлен, ошибка игнорируется).
+ * Невалидные значения (9999-99-99) -> 0 (expiry не установлен).
  * Корректная дата -> количество дней с эпохи.
  */
 TEST(test_invalid_date_returns_sentinel) {
@@ -728,15 +728,15 @@ TEST(test_invalid_date_returns_sentinel) {
     phone_db_lookup(&db, &key, NULL, NULL, &expiry);
     ASSERT_EQ(expiry, 0);
 
-    /* Невалидный формат — UINT32_MAX */
+    /* Невалидный формат — expiry не установлен (остаётся 0) */
     phone_key_from_hex(&key, "CCCC");
     phone_db_lookup(&db, &key, NULL, NULL, &expiry);
-    ASSERT_EQ(expiry, UINT32_MAX);
+    ASSERT_EQ(expiry, 0);
 
-    /* Невалидные значения — UINT32_MAX */
+    /* Невалидные значения — expiry не установлен (остаётся 0) */
     phone_key_from_hex(&key, "DDDD");
     phone_db_lookup(&db, &key, NULL, NULL, &expiry);
-    ASSERT_EQ(expiry, UINT32_MAX);
+    ASSERT_EQ(expiry, 0);
 
     phone_db_destroy(&db);
 }
@@ -833,6 +833,204 @@ TEST(test_ensure_capacity_overflow_guard) {
     phone_db_destroy(&db);
 }
 
+/* ======================================================================
+ * UNIT #24 format_expiry корректно конвертирует дни в дату
+ * ====================================================================== */
+
+/**
+ * @brief Проверяет базовые конверсии format_expiry.
+ *
+ * 0 → "", UINT32_MAX → "", эталонные даты → YYYY-MM-DD.
+ */
+TEST(test_format_expiry_basic) {
+    char buf[11];
+
+    /* 0 (без срока) → пустая строка */
+    ASSERT_EQ(format_expiry(0, buf, sizeof(buf)), 0);
+    ASSERT_STREQ(buf, "");
+
+    /* UINT32_MAX → пустая строка */
+    ASSERT_EQ(format_expiry(UINT32_MAX, buf, sizeof(buf)), 0);
+    ASSERT_STREQ(buf, "");
+
+    /* 20089 дней → 2025-01-01 */
+    ASSERT_EQ(format_expiry(20089, buf, sizeof(buf)), 10);
+    ASSERT_STREQ(buf, "2025-01-01");
+
+    /* 10957 дней → 2000-01-01 */
+    ASSERT_EQ(format_expiry(10957, buf, sizeof(buf)), 10);
+    ASSERT_STREQ(buf, "2000-01-01");
+
+    /* 20240 дней → 2025-06-01 */
+    ASSERT_EQ(format_expiry(20240, buf, sizeof(buf)), 10);
+    ASSERT_STREQ(buf, "2025-06-01");
+}
+
+/* ======================================================================
+ * UNIT #25 format_expiry roundtrip с parse_expiry
+ * ====================================================================== */
+
+/**
+ * @brief Проверяет roundtrip: parse_expiry → format_expiry совпадает.
+ *
+ * Загружает CSV с датой, сохраняет, перечитывает — дата должна совпасть.
+ * Также проверяет прямую конвертацию format_expiry(parse_expiry(date_str)).
+ */
+TEST(test_format_expiry_roundtrip) {
+    write_csv("test_data/unit25_rt.csv", "AAAA;hello;2025-01-01\n");
+
+    phone_db_t db;
+    phone_db_init(&db, 0, 0, 0);
+    phone_db_load_csv(&db, "test_data/unit25_rt.csv");
+
+    /* Сохраняем */
+    int rc = phone_db_save_sorted(&db, "test_data/unit25_out.csv");
+    ASSERT_EQ(rc, 0);
+    phone_db_destroy(&db);
+
+    /* Перечитываем */
+    phone_db_t db2;
+    phone_db_init(&db2, 0, 0, 0);
+    rc = phone_db_load_csv(&db2, "test_data/unit25_out.csv");
+    ASSERT_EQ(rc, 0);
+
+    phone_key_t key;
+    const char *comment;
+    uint16_t clen;
+    uint32_t expiry;
+    phone_key_from_hex(&key, "AAAA");
+    rc = phone_db_lookup(&db2, &key, &comment, &clen, &expiry);
+    ASSERT_EQ(rc, 0);
+    ASSERT_EQ(expiry, 20089);
+
+    phone_db_destroy(&db2);
+
+    /* Прямая конвертация: format_expiry(parse_expiry("2025-01-01")) */
+    uint32_t days;
+    ASSERT_EQ(parse_expiry("2025-01-01", &days), 0);
+    ASSERT_EQ(days, 20089);
+    char buf[11];
+    int n = format_expiry(days, buf, sizeof(buf));
+    ASSERT_EQ(n, 10);
+    ASSERT_STREQ(buf, "2025-01-01");
+
+    /* Ещё одна дата */
+    ASSERT_EQ(parse_expiry("2000-06-15", &days), 0);
+    ASSERT(days > 0);
+    n = format_expiry(days, buf, sizeof(buf));
+    ASSERT_EQ(n, 10);
+    ASSERT_STREQ(buf, "2000-06-15");
+
+    /* Пустая строка → 0 → "" */
+    ASSERT_EQ(parse_expiry("", &days), 0);
+    ASSERT_EQ(days, 0);
+    n = format_expiry(days, buf, sizeof(buf));
+    ASSERT_EQ(n, 0);
+    ASSERT_STREQ(buf, "");
+
+    /* Невалидная дата → -1 */
+    ASSERT_EQ(parse_expiry("not-a-date", &days), -1);
+    n = format_expiry(UINT32_MAX, buf, sizeof(buf));
+    ASSERT_EQ(n, 0);
+    ASSERT_STREQ(buf, "");
+}
+
+/* ======================================================================
+ * UNIT #26 format_expiry без срока сохраняет пустую строку
+ * ====================================================================== */
+
+/**
+ * @brief Проверяет, что запись без expiry сохраняется с пустым полем.
+ *
+ * Запись без даты истечения (expiry == 0) должна сохраняться
+ * с пустым третьим полем, а не с "0".
+ */
+TEST(test_format_expiry_no_expiry_saves_empty) {
+    write_csv("test_data/unit26_noexp.csv", "AAAA;hello;\n");
+
+    phone_db_t db;
+    phone_db_init(&db, 0, 0, 0);
+    phone_db_load_csv(&db, "test_data/unit26_noexp.csv");
+
+    int rc = phone_db_save_sorted(&db, "test_data/unit26_out.csv");
+    ASSERT_EQ(rc, 0);
+    phone_db_destroy(&db);
+
+    /* Читаем файл и проверяем формат */
+    FILE *f = fopen("test_data/unit26_out.csv", "r");
+    ASSERT(f);
+    char line[256];
+    ASSERT(fgets(line, sizeof(line), f));
+    fclose(f);
+
+    /* Ожидаем "AAAA;hello;" (без "0" в конце) */
+    ASSERT_STREQ(line, "AAAA;hello;\n");
+
+    /* Перечитываем через БД — expiry должен быть 0 */
+    phone_db_t db2;
+    phone_db_init(&db2, 0, 0, 0);
+    phone_db_load_csv(&db2, "test_data/unit26_out.csv");
+
+    phone_key_t key;
+    uint32_t expiry;
+    phone_key_from_hex(&key, "AAAA");
+    phone_db_lookup(&db2, &key, NULL, NULL, &expiry);
+    ASSERT_EQ(expiry, 0);
+
+    phone_db_destroy(&db2);
+}
+
+/* ======================================================================
+ * UNIT #27 Прямые тесты parse_expiry
+ * ====================================================================== */
+
+/**
+ * @brief Тестирование parse_expiry напрямую со всеми ветвями.
+ *
+ * Проверяет NULL, пустую строку, невалидные форматы,
+ * невалидные значения, эталонные даты и sınırные случаи.
+ */
+TEST(test_parse_expiry_direct) {
+    uint32_t d;
+
+    /* NULL → 0 */
+    ASSERT_EQ(parse_expiry(NULL, &d), 0);
+    ASSERT_EQ(d, 0);
+
+    /* Пустая строка → 0 */
+    ASSERT_EQ(parse_expiry("", &d), 0);
+    ASSERT_EQ(d, 0);
+
+    /* Невалидный формат — sscanf не парсит */
+    ASSERT_EQ(parse_expiry("abc", &d), -1);
+    ASSERT_EQ(parse_expiry("2025", &d), -1);
+    ASSERT_EQ(parse_expiry("2025-01", &d), -1);
+    ASSERT_EQ(parse_expiry("2025/01/01", &d), -1);
+
+    /* Невалидные значения — m < 1, m > 12, d < 1, d > 31 */
+    ASSERT_EQ(parse_expiry("2025-13-01", &d), -1);
+    ASSERT_EQ(parse_expiry("2025-00-01", &d), -1);
+    ASSERT_EQ(parse_expiry("2025-01-00", &d), -1);
+    ASSERT_EQ(parse_expiry("2025-01-32", &d), -1);
+
+    /* До эпохи — days < 0 */
+    ASSERT_EQ(parse_expiry("0001-01-01", &d), -1);
+
+    /* Эталонные даты */
+    ASSERT_EQ(parse_expiry("1970-01-01", &d), 0);
+    ASSERT_EQ(d, 0);
+    ASSERT_EQ(parse_expiry("2000-01-01", &d), 0);
+    ASSERT_EQ(d, 10957);
+    ASSERT_EQ(parse_expiry("2025-01-01", &d), 0);
+    ASSERT_EQ(d, 20089);
+    ASSERT_EQ(parse_expiry("2025-06-15", &d), 0);
+    ASSERT_EQ(d, 20254);
+
+    /* Большая дата — не переполняется */
+    ASSERT_EQ(parse_expiry("9999-12-31", &d), 0);
+    ASSERT(d > 0);
+}
+
 /* ====================================================================== */
 
 int main(void) {
@@ -921,7 +1119,7 @@ int main(void) {
     RUN(test_update_delete_nonexistent_returns_error);
     printf("\n");
 
-    printf("[UNIT #21: Невалидные даты возвращают UINT32_MAX]\n");
+    printf("[UNIT #21: Невалидные даты — expiry не установлен]\n");
     RUN(test_invalid_date_returns_sentinel);
     printf("\n");
 
@@ -931,6 +1129,22 @@ int main(void) {
 
     printf("[UNIT #23: ensure_capacity проверяет переполнение]\n");
     RUN(test_ensure_capacity_overflow_guard);
+    printf("\n");
+
+    printf("[UNIT #24: format_expiry конвертирует дни в дату]\n");
+    RUN(test_format_expiry_basic);
+    printf("\n");
+
+    printf("[UNIT #25: format_expiry roundtrip с parse_expiry]\n");
+    RUN(test_format_expiry_roundtrip);
+    printf("\n");
+
+    printf("[UNIT #26: format_expiry без срока сохраняет пустую строку]\n");
+    RUN(test_format_expiry_no_expiry_saves_empty);
+    printf("\n");
+
+    printf("[UNIT #27: Прямые тесты parse_expiry]\n");
+    RUN(test_parse_expiry_direct);
     printf("\n");
 
     printf("=== Результаты: %d/%d пройдено, %d ПРОВАЛЕНО ===\n",
